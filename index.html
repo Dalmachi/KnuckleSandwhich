@@ -220,8 +220,7 @@ input:focus,textarea:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 4p
 <h2>Enhance your fist</h2>
 <p class="lead">We cut out the background and boost the lighting, keeping your hand’s exact shape. Tap any part you want gone, or switch to Brush and drag over it.</p>
 <div class="grid"><div><canvas id="pv"></canvas></div>
-<div class="card"><label class="k" for="tol">Background tolerance</label><input type="range" id="tol" min="10" max="130" value="48">
-<label class="row" style="margin:12px 0 4px;justify-content:flex-start"><input type="checkbox" id="smart" checked disabled> Auto-detect my fist</label>
+<div class="card"><label class="row" style="margin:12px 0 4px;justify-content:flex-start"><input type="checkbox" id="smart" checked disabled> Auto-detect my fist</label>
 <p class="hint" id="dmsg"></p>
 <label class="row" style="margin:4px 0;justify-content:flex-start"><input type="checkbox" id="guide"> Auto-cut to the outline guide</label>
 <label class="row" style="margin:8px 0;justify-content:flex-start"><input type="checkbox" id="enh" checked> Auto-enhance lighting &amp; color</label>
@@ -239,7 +238,6 @@ input:focus,textarea:focus{outline:0;border-color:var(--red);box-shadow:0 0 0 4p
 <label class="sr" for="nm">Sandwich name</label><input type="text" id="nm" maxlength="32" placeholder="Name your sandwich">
 <div class="rsec">Ingredients</div><div id="lines"></div>
 <div class="rsec">Deliver to</div>
-<label class="f">Number (optional)<input type="tel" id="num" inputmode="tel" autocomplete="off" maxlength="18" placeholder="(555) 123-4567"></label>
 <label class="f">Name<input type="text" id="toname" maxlength="30" placeholder="Who’s getting it?"></label>
 <label class="f">Why you’re sending it<input type="text" id="why" list="whys" maxlength="80" placeholder="e.g. Left me on read for 3 days"><datalist id="whys"><option value="Left me on read for 3 days"><option value="Chews with their mouth open"><option value="Cut me off in traffic"><option value="Spoiled the ending"><option value="Reply-all’d the whole company"></datalist></label>
 <label class="f">Message<textarea id="note" maxlength="140" placeholder="Say it with your knuckles"></textarea></label>
@@ -389,13 +387,18 @@ function guideMask(w,h){const m=document.createElement('canvas');m.width=w;m.hei
 
 function process(){
  const w=raw.width,h=raw.height,N=w*h,d=rawD;
- const tol=+$('#tol').value,key=rawVer+'|'+tol,useHm=!!hm&&$('#smart').checked&&hm.length===N;
+ const tol=48,key=rawVer+'|'+tol,useHm=!!hm&&$('#smart').checked&&hm.length===N;
  /* background flood-fill + biggest-blob labelling only depend on the photo + tolerance, so cache them */
  if(!useHm&&(!cc||cc.key!==key)){
-  let r=0,g=0,b=0,n=0;const a=i=>{r+=d[i*4];g+=d[i*4+1];b+=d[i*4+2];n++};for(let x=0;x<w;x+=3){a(x);a((h-1)*w+x)}for(let y=0;y<h;y+=3){a(y*w);a(y*w+w-1)}const bg=[r/n,g/n,b/n];
+  const SM=[],ad=i=>SM.push([d[i*4],d[i*4+1],d[i*4+2]]);for(let x=0;x<w;x+=3){ad(x);ad((h-1)*w+x)}for(let y=0;y<h;y+=3){ad(y*w);ad(y*w+w-1)}
+  /* learn the background as a few colour clusters from the photo's border (handles gradients and shadows) */
+  const K=Math.min(5,SM.length),cen=[];for(let k=0;k<K;k++)cen.push(SM[Math.floor(k*SM.length/K)].slice());let cnt2=[];
+  for(let it=0;it<6;it++){const sm=cen.map(()=>[0,0,0,0]);SM.forEach(p=>{let bi=0,bd=1e9;cen.forEach((c,j)=>{const dd=(p[0]-c[0])**2+(p[1]-c[1])**2+(p[2]-c[2])**2;if(dd<bd){bd=dd;bi=j}});const m=sm[bi];m[0]+=p[0];m[1]+=p[1];m[2]+=p[2];m[3]++});cen.forEach((c,j)=>{const m=sm[j];if(m[3]){c[0]=m[0]/m[3];c[1]=m[1]/m[3];c[2]=m[2]/m[3]}});cnt2=sm.map(m=>m[3])}
+  /* ignore small clusters (likely the wrist or hand touching the frame edge) */
+  let bgs=cen.filter((c,j)=>cnt2[j]>=SM.length*.1);if(!bgs.length)bgs=[cen[cnt2.indexOf(Math.max(...cnt2))]];
   if(!Q32||Q32.length<N)Q32=new Int32Array(N);const q=Q32;let qh=0,qt=0;
   const t2=tol*tol,isbg=new Uint8Array(N);
-  const push=i=>{if(isbg[i])return;const p=i*4,a=d[p]-bg[0],b=d[p+1]-bg[1],c=d[p+2]-bg[2];if(a*a+b*b+c*c<t2){isbg[i]=1;q[qt++]=i}};
+  const push=i=>{if(isbg[i])return;const p=i*4;for(let j=0;j<bgs.length;j++){const c=bgs[j],a=d[p]-c[0],b=d[p+1]-c[1],e=d[p+2]-c[2];if(a*a+b*b+e*e<t2){isbg[i]=1;q[qt++]=i;return}}};
   for(let x=0;x<w;x++){push(x);push((h-1)*w+x)}for(let y=0;y<h;y++){push(y*w);push(y*w+w-1)}
   while(qh<qt){const i=q[qh++],x=i%w;if(x>0)push(i-1);if(x<w-1)push(i+1);if(i>=w)push(i-w);if(i<N-w)push(i+w)}
   const lab=new Int32Array(N);let best=0,bc=0,L=0;
@@ -423,13 +426,13 @@ function process(){
  if(fist.width!==w||fist.height!==h){fist.width=w;fist.height=h}
  fist.getContext('2d').putImageData(out,0,0);
  const ok=cnt>N*.02;bb=ok?{x:x0,y:y0,w:x1-x0+1,h:y1-y0+1}:null;
- $('#msg').textContent=ok?(gm&&!gUsed?'The outline guide didn’t match your photo, so we cut around the hand itself.':''):'Couldn’t find a clear fist. Try a plainer background or adjust tolerance.';$('#to3').disabled=!ok;$('#dmsg').textContent=(hm&&!$('#smart').checked)?'':(HN[handNote]||'');
+ $('#msg').textContent=ok?(gm&&!gUsed?'The outline guide didn’t match your photo, so we cut around the hand itself.':''):'Couldn’t find a clear fist. Try a plainer background, or use Tap a part or Brush to remove what’s left.';$('#to3').disabled=!ok;$('#dmsg').textContent=(hm&&!$('#smart').checked)?'':(HN[handNote]||'');
  showPv(false)}
 function showPv(orig){const p=$('#pv'),c=p.getContext('2d');if(p.width!==raw.width||p.height!==raw.height){p.width=raw.width;p.height=raw.height}c.setTransform(1,0,0,1,0,0);c.clearRect(0,0,p.width,p.height);c.drawImage(orig?raw:fist,0,0);if($('#guide').checked){const k=guideSetup(c,p.width,p.height);c.setLineDash([2/k*3,7/k*3]);c.lineCap='round';c.lineJoin='round';c.lineWidth=3/k*2.2;c.strokeStyle='rgba(0,0,0,.55)';c.stroke(GP);c.lineWidth=3/k;c.strokeStyle='#fff';c.stroke(GP);c.setTransform(1,0,0,1,0,0);c.setLineDash([])}}
-let db;$('#tol').oninput=()=>{clearTimeout(db);db=setTimeout(process,140)};$('#enh').onchange=process;$('#smart').onchange=process;$('#guide').onchange=process;
+$('#enh').onchange=process;$('#smart').onchange=process;$('#guide').onchange=process;
 $('#orig').onpointerdown=()=>showPv(true);['pointerup','pointerleave'].forEach(e=>$('#orig').addEventListener(e,()=>showPv(false)));
 const pvPos=e=>{const r=$('#pv').getBoundingClientRect();return[Math.floor((e.clientX-r.left)*raw.width/r.width),Math.floor((e.clientY-r.top)*raw.height/r.height)]};
-function wand(x,y){const w=raw.width,h=raw.height,N=w*h;if(x<0||y<0||x>=w||y>=h)return;if(!lastOut||lastOut[(y*w+x)*4+3]<10)return;const d=rawD,s0=(y*w+x)*4,t2=Math.pow(Math.max(14,+$('#tol').value*.7),2),seen=new Uint8Array(N),q=[y*w+x],list=[];seen[y*w+x]=1;
+function wand(x,y){const w=raw.width,h=raw.height,N=w*h;if(x<0||y<0||x>=w||y>=h)return;if(!lastOut||lastOut[(y*w+x)*4+3]<10)return;const d=rawD,s0=(y*w+x)*4,t2=Math.pow(Math.max(14,48*.7),2),seen=new Uint8Array(N),q=[y*w+x],list=[];seen[y*w+x]=1;
  while(q.length){const i=q.pop(),p=i*4,a=d[p]-d[s0],b=d[p+1]-d[s0+1],c=d[p+2]-d[s0+2];if(a*a+b*b+c*c>t2)continue;if(!erased[i]){erased[i]=1;list.push(i)}const xx=i%w;if(xx>0&&!seen[i-1]){seen[i-1]=1;q.push(i-1)}if(xx<w-1&&!seen[i+1]){seen[i+1]=1;q.push(i+1)}if(i>=w&&!seen[i-w]){seen[i-w]=1;q.push(i-w)}if(i<N-w&&!seen[i+w]){seen[i+w]=1;q.push(i+w)}}
  if(list.length){undo.push(list);process()}}
 function brush(x,y){const w=raw.width,h=raw.height,R=Math.max(7,Math.round(w*.035));for(let yy=Math.max(0,y-R);yy<=Math.min(h-1,y+R);yy++)for(let xx=Math.max(0,x-R);xx<=Math.min(w-1,x+R);xx++){if((xx-x)**2+(yy-y)**2<=R*R){const i=yy*w+xx;if(!erased[i]){erased[i]=1;painting.push(i)}}}cancelAnimationFrame(rafP);rafP=requestAnimationFrame(process)}
@@ -558,8 +561,6 @@ const grow=()=>{const f=$('#fee');f.style.height='auto';f.style.height=f.scrollH
 /* ---------- order + share ---------- */
 const digs=s=>s.replace(/\D/g,'');
 const fmtNum=v=>{const p=v.trim().startsWith('+');const d=digs(v);if(p||d.length>10)return '+'+d.slice(0,15);if(d.length<=3)return d;if(d.length<=6)return '('+d.slice(0,3)+') '+d.slice(3);return '('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6,10)};
-$('#num').oninput=e=>{const el=e.target,v=el.value;if(/^[\d\s()+\-]*$/.test(v))el.value=fmtNum(v);else el.value=fmtNum(digs(v));$('#err').textContent=''};
-const smsNum=()=>{const v=$('#num').value.trim(),d=digs(v);return (v.startsWith('+')||d.length>10)?'+'+d:(d.length===10?'+1'+d:d)};
 const msgText=()=>{const f=$('#from').value.trim(),n=$('#nm').value.trim(),t=$('#toname').value.trim(),m=$('#note').value.trim(),y=$('#why').value.trim(),fe=$('#fee').value.trim();
  return (t?'Hey '+t+'! ':'')+(f?f+' sent you':'You got')+' a Knuckle Sandwich'+(n?' “'+n+'”':'')+'. '+list()+'.'+(y?'\n\nWhy: '+y+'.':'')+(fe?'\n\nPayment demanded for the attitude: '+fe+'.':'')+(m?'\n\n“'+m+'”':'')};
 
@@ -568,18 +569,17 @@ let sentBlob=null,finalURL='';
 $('#fin').onclick=async()=>{
  if(!$('#toname').value.trim()){$('#err').textContent='Add who this is for.';$('#toname').focus();return}
  if(!$('#why').value.trim()){$('#err').textContent='Say why you’re sending it.';$('#why').focus();return}
- if($('#num').value.trim()&&digs($('#num').value).length<10){$('#err').textContent='That number looks short. Add the full number or leave it blank.';$('#num').focus();return}
  /* render the finished state (no half-played animations) before exporting */
  cancelAnimationFrame(tm);freeze=true;receipt();render();freeze=false;const f=$('#from').value.trim();
- $('#osum').textContent=['To '+$('#toname').value.trim(),$('#num').value.trim(),f&&'From '+f,list(),$('#fee').value.trim()&&'Demand: '+$('#fee').value.trim()].filter(Boolean).join(' · ');
- $('#sms').href='sms:'+smsNum()+'?&body='+encodeURIComponent(msgText()+'\n\n(Image attached)');
- const hasNum=digs($('#num').value).length>=10;
+ $('#osum').textContent=['To '+$('#toname').value.trim(),f&&'From '+f,list(),$('#fee').value.trim()&&'Demand: '+$('#fee').value.trim()].filter(Boolean).join(' · ');
+ $('#sms').href='sms:?&body='+encodeURIComponent(msgText()+'\n\n(Image attached)');
+ const hasNum=true;
  sentBlob=await getBlob();sentFile=new File([sentBlob],'knuckle-sandwich.png',{type:'image/png'});
  const canFiles=!!(navigator.canShare&&navigator.canShare({files:[sentFile]}));
  /* best path: the share sheet hands Messages the picture AND the text together, so the image is already attached */
  $('#shr').hidden=!canFiles;$('#sms').hidden=canFiles||!hasNum;
  $('#shr').textContent='Send with image ✉️';
- $('#shnote').textContent=canFiles?'Tap “Send with image”, choose Messages'+(hasNum?' and pick '+$('#num').value.trim():'')+'. Your sandwich picture comes attached.':(hasNum?'Tap “Text it”: we save the image and open Messages for '+$('#num').value.trim()+'. Attach the saved image.':'Save the image and send it however you like.');
+ $('#shnote').textContent=canFiles?'Tap “Send with image”, choose Messages'+' and pick who it’s for'+'. Your sandwich picture comes attached.':'Tap “Text it”: we save the image and open Messages. Attach the saved image.';
  if(finalURL)URL.revokeObjectURL(finalURL);finalURL=URL.createObjectURL(sentBlob);const im=$('#final'),sh=$('#share');im.src=finalURL;im.hidden=false;
  sh.hidden=false;sh.scrollIntoView({block:'center',behavior:'smooth'})};
 let sentFile=null;
