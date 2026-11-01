@@ -1,4 +1,4 @@
-# Knuckle Sandwich 🥪✊
+# Knuckle Sandwich ✊
 
 A small, single-file web app: take or upload a photo of your fist, build a sandwich around it
 (bread, toppings, sauces), name it, and send it to someone who deserves a bite.
